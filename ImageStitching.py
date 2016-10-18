@@ -1,5 +1,6 @@
 """
-This module takes two images and stitches them to create panorama 
+This module takes two images and stitches them to create panorama
+
 Stitching Algorithm
 First place the right shifted image on empty canvas
 Then place the left image down.
@@ -7,9 +8,10 @@ Then place the left image down.
 
 import cv2
 import numpy as np
-import glob
+
 
 def drawMatches(image1, point1, image2, point2):
+    "Connects two matching keypoints by a line"
     output = np.hstack((image1, image2))
     row, col = image1.shape[:2]
     x, y = point2
@@ -23,54 +25,56 @@ def drawMatches(image1, point1, image2, point2):
 
 # Goodness bias should matter more than recent bias
 def findHomography(image1, image2, Match=0.6):
+    """Finds the matrix which relates two images. H = [R|T]"""
     # FLANN parameters for matching features
+
+    # Calcuate keypoints in an image
     sift = cv2.SIFT(2000)
     kp1, des1 = sift.detectAndCompute(image1, None)
     kp2, des2 = sift.detectAndCompute(image2, None)
 
     kp1.sort()
-    FLANN_INDEX_KDTREE = 0
 
+    # Define a matcher to match keypoints in image pairs
+    FLANN_INDEX_KDTREE = 0
     index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
     search_params = dict(checks=50)
-
     flann = cv2.FlannBasedMatcher(index_params, search_params)
     matches = flann.knnMatch(des1, des2, k=2)
 
-    good = []
     points1 = []
     points2 = []
 
     # ratio test as per Lowe's paper
-    j = 0
-    badScore, goodScore = 0, 0
-    goodFeatureCount, badFeatureCount = 0, 0
-
     # 0.8 is default
     for i, (m, n) in enumerate(matches):
         if m.distance < 0.6 * n.distance:
             mm = m.distance / n.distance
-            goodScore += mm
-            good.append(m)
+
+            # Keep a list of good points from both images to compute homography
+            # Points1 = Matrix * Points2
             points1.append(kp1[m.queryIdx].pt)
             points2.append(kp2[m.trainIdx].pt)
-            j += 1
-            goodFeatureCount += 1
 
+            # Location of keypoints
             point1 = (int(kp1[m.queryIdx].pt[0]), int(kp1[m.queryIdx].pt[1]))
             point2 = (int(kp2[m.trainIdx].pt[0]), int(kp2[m.trainIdx].pt[1]))
+
+            # useful only for debugging
             drawMatches(image1, point1, image2, point2)
 
         else:
-            mm = m.distance / n.distance
-            badScore += mm
-            badFeatureCount += 1
+            # Bad match
+            pass
 
+    # Data type conversion
     points1 = np.float32(points1)
     points2 = np.float32(points2)
 
+    # Are two images touching?
     isAdjacentImage = False
 
+    # Two images are touching if they have common keypoints / regions
     if len(points1) and len(points2):
         H, mask = cv2.findHomography(points1, points2, cv2.FM_RANSAC, 10)
         isAdjacentImage = True
@@ -80,12 +84,11 @@ def findHomography(image1, image2, Match=0.6):
         return isAdjacentImage, None
 
 
-
 def stitch(imageL, imageR, result):
     row, col = imageR.shape[:2]
     # temp1 = result.copy()
     # temp2 = result.copy()
-    print "RESULT : ",result.shape
+    print "RESULT : ", result.shape
     result[0:row, 0:col] = imageR
     row, col = imageL.shape[:2]
     result[0:row, 0:col] = imageL
@@ -99,6 +102,7 @@ def stitch(imageL, imageR, result):
 
     return result
 
+
 def findOrderAndStitch(retval, image1, image2):
     translate_X, translate_Y = int(retval[0][2]), int(retval[1][2])
 
@@ -111,15 +115,14 @@ def findOrderAndStitch(retval, image1, image2):
     print("Image1 shape : {}").format(image1.shape)
     print("Image2 shape : {}").format(image2.shape)
     print("Result shape : {}").format(result.shape)
-    print("Translate Y, X {} {}").format(translate_Y,translate_X)
-
+    print("Translate Y, X {} {}").format(translate_Y, translate_X)
 
     # If left image is in left and right image at is in right
     if translate_X >= 0:
 
         row, col = image1.shape[:2]
         M = np.float32([[1, 0, translate_X], [0, 1, translate_Y]])
-        r,c = row+abs(translate_Y), col+abs(translate_X)
+        r, c = row + abs(translate_Y), col + abs(translate_X)
         image1 = cv2.warpAffine(image1, M, (c, r))
         print "After affine image1 :", image1.shape
 
@@ -129,7 +132,7 @@ def findOrderAndStitch(retval, image1, image2):
     else:
         row, col = image2.shape[:2]
         M = np.float32([[1, 0, -translate_X], [0, 1, -translate_Y]])
-        r,c = row+abs(translate_Y), col+abs(translate_X)
+        r, c = row + abs(translate_Y), col + abs(translate_X)
         image2 = cv2.warpAffine(image2, M, (c, r))
         print "After affine image2 :", image2.shape
 
@@ -145,6 +148,7 @@ def findOrderAndStitch(retval, image1, image2):
 
 
 def stitchImage(image1, image2):
+    """Stitches two images if they have common regions"""
     ret, H = findHomography(image1, image2)
     if ret:
         res = findOrderAndStitch(H, image1, image2)
@@ -153,6 +157,7 @@ def stitchImage(image1, image2):
 
 
 if __name__ == "__main__":
-    image1 = cv2.imread("G:/Filters/Stitch/b1.jpg")
-    image2 = cv2.imread("G:/Filters/Stitch/b2.jpg")
+    image1 = cv2.imread("G:/Filters/Stitch/a1.jpg")
+    image2 = cv2.imread("G:/Filters/Stitch/a3.jpg")
     stitchImage(image1, image2)
+    help(drawMatches)
